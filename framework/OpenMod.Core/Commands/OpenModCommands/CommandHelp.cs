@@ -37,7 +37,6 @@ namespace OpenMod.Core.Commands.OpenModCommands
             ICommandContextBuilder commandContextBuilder,
             IOpenModStringLocalizer stringLocalizer) : base(serviceProvider)
         {
-            // get global permission checker instead of scoped
             m_PermissionChecker = runtime.Host!.Services.GetRequiredService<IPermissionChecker>();
 
             m_CommandStore = commandStore;
@@ -61,7 +60,6 @@ namespace OpenMod.Core.Commands.OpenModCommands
                     throw new CommandWrongUsageException(Context);
                 }
 
-                // Filter commands that user has permission to see
                 var parents = new List<ICommandRegistration>();
                 foreach (var command in commands.Where(x => x.ParentId is null))
                 {
@@ -113,8 +111,6 @@ namespace OpenMod.Core.Commands.OpenModCommands
                 var registeredPermission = m_PermissionRegistry.FindPermission(commandRegistration.Component, permission);
                 if (registeredPermission == null)
                 {
-                    // Log warning instead of throwing exception
-                    // This allows the help command to continue working even if permissions are misconfigured
                     return null;
                 }
 
@@ -122,7 +118,6 @@ namespace OpenMod.Core.Commands.OpenModCommands
             }
             catch
             {
-                // If there's any error getting permission, return null to allow command to be shown
                 return null;
             }
         }
@@ -152,7 +147,6 @@ namespace OpenMod.Core.Commands.OpenModCommands
 
             await PrintAsync($"Permission: {permission ?? "<none>"}");
             
-            // Only show command structure if there are children
             var hasChildren = commands.Any(d => d.ParentId?.Equals(context.CommandRegistration.Id, StringComparison.OrdinalIgnoreCase) == true);
             if (hasChildren)
             {
