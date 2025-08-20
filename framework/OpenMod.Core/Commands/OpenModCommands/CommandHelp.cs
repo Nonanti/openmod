@@ -37,7 +37,6 @@ namespace OpenMod.Core.Commands.OpenModCommands
             ICommandContextBuilder commandContextBuilder,
             IOpenModStringLocalizer stringLocalizer) : base(serviceProvider)
         {
-            // get global permission checker instead of scoped
             m_PermissionChecker = runtime.Host!.Services.GetRequiredService<IPermissionChecker>();
 
             m_CommandStore = commandStore;
@@ -61,7 +60,16 @@ namespace OpenMod.Core.Commands.OpenModCommands
                     throw new CommandWrongUsageException(Context);
                 }
 
-                var parents = commands.Where(x => x.ParentId is null).ToList();
+                var parents = new List<ICommandRegistration>();
+                foreach (var command in commands.Where(x => x.ParentId is null))
+                {
+                    var permission = GetPermission(command, commands);
+                    if (string.IsNullOrEmpty(permission) || 
+                        await m_PermissionChecker.CheckPermissionAsync(Context.Actor, permission) == PermissionGrantResult.Grant)
+                    {
+                        parents.Add(command);
+                    }
+                }
 
                 var pageCommands = parents
                     .Skip(itemsPerPage * (currentPage - 1))
@@ -92,23 +100,32 @@ namespace OpenMod.Core.Commands.OpenModCommands
 
         protected virtual string? GetPermission(ICommandRegistration commandRegistration, IReadOnlyCollection<ICommandRegistration> commands)
         {
-            var permission = m_CommandPermissionBuilder.GetPermission(commandRegistration, commands)?.Split(':')?[1];
-            if (permission == null)
+            try
+            {
+                var permission = m_CommandPermissionBuilder.GetPermission(commandRegistration, commands)?.Split(':')?[1];
+                if (permission == null)
+                {
+                    return null;
+                }
+
+                var registeredPermission = m_PermissionRegistry.FindPermission(commandRegistration.Component, permission);
+                if (registeredPermission == null)
+                {
+                    return null;
+                }
+
+                return $"{registeredPermission.Owner.OpenModComponentId}:{registeredPermission.Permission}";
+            }
+            catch
             {
                 return null;
             }
-
-            var registeredPermission = m_PermissionRegistry.FindPermission(commandRegistration.Component, permission);
-            if (registeredPermission == null)
-            {
-                throw new Exception($"Unregistered permission \"{permission}\" in component: {commandRegistration.Component.OpenModComponentId}");
-            }
-
-            return $"{registeredPermission.Owner.OpenModComponentId}:{registeredPermission.Permission}";
         }
 
         private async Task PrintCommandHelpAsync(ICommandContext context, string? permission, IReadOnlyCollection<ICommandRegistration> commands)
         {
+            await PrintAsync($"--- Help for '{context.CommandRegistration!.Name}' ---", Color.CornflowerBlue);
+            
             var usage = $"Usage: {context.CommandRegistration!.Name}";
             if (!string.IsNullOrEmpty(context.CommandRegistration.Syntax))
             {
@@ -116,6 +133,7 @@ namespace OpenMod.Core.Commands.OpenModCommands
             }
 
             await PrintAsync(usage);
+            
             var aliases = context.CommandRegistration.Aliases;
             if (aliases?.Count > 0)
             {
@@ -128,8 +146,13 @@ namespace OpenMod.Core.Commands.OpenModCommands
             }
 
             await PrintAsync($"Permission: {permission ?? "<none>"}");
-            await PrintAsync("Command structure:");
-            await PrintChildrenAsync(context.CommandRegistration, commands, string.Empty, true);
+            
+            var hasChildren = commands.Any(d => d.ParentId?.Equals(context.CommandRegistration.Id, StringComparison.OrdinalIgnoreCase) == true);
+            if (hasChildren)
+            {
+                await PrintAsync("Sub-commands:");
+                await PrintChildrenAsync(context.CommandRegistration, commands, string.Empty, true);
+            }
         }
 
         private async Task PrintChildrenAsync(ICommandRegistration registration,
@@ -174,17 +197,23 @@ namespace OpenMod.Core.Commands.OpenModCommands
 
         private async Task PrintPageAsync(int pageNumber, int pageCount, IEnumerable<ICommandRegistration> page)
         {
-            await PrintAsync($"[{pageNumber}/{pageCount}] Commands", Color.CornflowerBlue);
+            await PrintAsync($"[{pageNumber}/{pageCount}] Available Commands", Color.CornflowerBlue);
 
             if (!page.Any())
             {
-                await PrintAsync("No commands found.", Color.Red);
+                await PrintAsync("No commands available or you don't have permission to see any.", Color.Red);
                 return;
             }
 
             foreach (var command in page)
             {
                 await PrintAsync(GetCommandUsage(command));
+            }
+
+            await PrintAsync($"Use 'help <command>' for more information about a specific command.", Color.Gray);
+            if (pageCount > pageNumber)
+            {
+                await PrintAsync($"Use 'help {pageNumber + 1}' to see the next page.", Color.Gray);
             }
         }
 
