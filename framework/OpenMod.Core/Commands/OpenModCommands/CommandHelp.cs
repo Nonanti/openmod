@@ -211,7 +211,7 @@ namespace OpenMod.Core.Commands.OpenModCommands
             }
 
             await PrintAsync($"Use 'help <command>' for more information about a specific command.", Color.Gray);
-            if (pageCount > 1)
+            if (pageCount > pageNumber)
             {
                 await PrintAsync($"Use 'help {pageNumber + 1}' to see the next page.", Color.Gray);
             }
