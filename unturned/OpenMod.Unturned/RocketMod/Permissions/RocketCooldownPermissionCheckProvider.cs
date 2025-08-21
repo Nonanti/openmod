@@ -72,8 +72,13 @@ namespace OpenMod.Unturned.RocketMod.Permissions
                 return Task.FromResult(PermissionGrantResult.Default);
             }
 
-            permissionCooldown[permission] = DateTime.UtcNow.AddSeconds(rocketPermission.Cooldown);
-            m_Cooldowns[actor.Id] = permissionCooldown;
+            if (rocketPermission.Cooldown > 0)
+            {
+                permissionCooldown[permission] = DateTime.UtcNow.AddSeconds(rocketPermission.Cooldown);
+                m_Cooldowns[actor.Id] = permissionCooldown;
+            }
+            
+            // Let RocketPermissionStore handle the actual permission granting
             return Task.FromResult(PermissionGrantResult.Default);
         }
 
