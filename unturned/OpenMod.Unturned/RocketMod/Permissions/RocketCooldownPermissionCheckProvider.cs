@@ -1,7 +1,10 @@
-﻿using OpenMod.API.Localization;
+﻿using Microsoft.Extensions.Configuration;
+using OpenMod.API.Localization;
 using OpenMod.API.Permissions;
+using OpenMod.API.Prioritization;
 using OpenMod.Core.Helpers;
 using OpenMod.Extensions.Games.Abstractions.Players;
+using OpenMod.Unturned.Configuration;
 using Rocket.API;
 using Rocket.Core;
 using System;
@@ -13,15 +16,20 @@ using OpenMod.API.Commands;
 
 namespace OpenMod.Unturned.RocketMod.Permissions
 {
+    [Priority(Priority = Priority.Highest)]
     public class RocketCooldownPermissionCheckProvider : IPermissionCheckProvider
     {
         private readonly IOpenModHostStringLocalizer m_StringLocalizer;
         private readonly Dictionary<string, Dictionary<string, DateTime>> m_Cooldowns;
+        private readonly IConfiguration m_Configuration;
 
-        public RocketCooldownPermissionCheckProvider(IOpenModHostStringLocalizer stringLocalizer)
+        public RocketCooldownPermissionCheckProvider(
+            IOpenModHostStringLocalizer stringLocalizer,
+            IOpenModUnturnedConfiguration configuration)
         {
             m_StringLocalizer = stringLocalizer;
             m_Cooldowns = new Dictionary<string, Dictionary<string, DateTime>>();
+            m_Configuration = configuration.Configuration;
         }
 
         public bool SupportsActor(IPermissionActor actor)
@@ -37,6 +45,15 @@ namespace OpenMod.Unturned.RocketMod.Permissions
             }
 
             permission = permission.Trim();
+
+            // Check if actor is admin and if we should bypass cooldown for admins
+            if (actor is Unturned.Users.UnturnedUser unturnedUser && 
+                unturnedUser.Player.SteamPlayer.isAdmin && 
+                m_Configuration.GetValue("rocketmod:bypassAdminCooldowns", defaultValue: true))
+            {
+                // Admins bypass cooldowns if configured to do so
+                return Task.FromResult(PermissionGrantResult.Default);
+            }
 
             var rocketPlayer = new RocketPlayer(actor.Id, actor.DisplayName);
             var permissions = R.Permissions.GetPermissions(rocketPlayer);
